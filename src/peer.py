@@ -1,19 +1,26 @@
 import socket
 import bitstring
 from pydispatch import dispatcher
+from threading import Thread
 
 from message import MessageIDs, HandShake, RequestBlock, InterestedMessage
 from piece import Piece, PieceState
 from block import BlockState
 
+class PeerState:
+    Free = 0
+    Busy = 1
+
 class Peer(object):
-    def __init__(self, ip: str, port: int, number_of_pieces: int, info_hash: bytes):
+    def __init__(self, ip: str, port: int, number_of_pieces: int, info_hash: bytes, id: str):
+        self.id = id
+
         self.ip = ip
         self.port = port
 
         self.has_handshaked = False
         self.healthy = False
-        self.read_buffer = b''
+        self.state = PeerState.Free
 
         self.number_of_pieces = number_of_pieces
         self.info_hash = info_hash
@@ -81,16 +88,19 @@ class Peer(object):
             self.socket.settimeout(1)
             _, recieved_block_content = self.recieve_data()
         except Exception as exception:
-            print("Failed to send block request (piece_index: %d - offset: %d - block_length: %d - %s)" % (piece_index, offset, block_length, exception.__str__()))
             return None
         return recieved_block_content[8:]
     
     def download_piece(self, piece: Piece):        
         piece.state = PieceState.PENDING
+        self.state = PeerState.Busy
 
+        thread = Thread(target=self.run, args=(piece,), daemon=True)
+        thread.start()
+        return thread
+
+    def run(self, piece: Piece):
         piece_data = bytearray()
-        print("Downloading piece %d" % piece.piece_index)
-
         max_retry = 5
 
         while not piece.is_completed():
@@ -100,24 +110,26 @@ class Peer(object):
             block_data = self.download_block(block.piece_index, block.offset, block.length)
             if not block_data:
                 if max_retry == 0:
-                    print("Failed to download block")
                     self.healthy = False
                     piece.state = PieceState.UNFINISHED
                     return False
-                
-                print("Retry to download block")
                 max_retry -= 1
                 continue
             piece_data.extend(block_data)
             block.state = BlockState.FINISHED
-
-        print("Downloading piece %d" % piece.piece_index + " done")
-
+        
+        if not piece.check_piece_hash(piece_data):
+            piece.reset_piece()
+            self.state = PeerState.Free
+            print("Piece %s is not correct" % piece.piece_index)
+            return False
 
         sender = {
+            "peer": f"{self.ip}:{self.port}",
             "piece_index": piece.piece_index,
             "piece_data": piece_data
         }
-        dispatcher.send(signal = "PiecesManager.Piece", sender = sender)
+        dispatcher.send(signal = f"PiecesManager.Piece {self.id}", sender = sender)
+        self.state = PeerState.Free
         return True
-
+            

@@ -5,7 +5,8 @@ import socket
 from bcoding import bdecode
 
 class Tracker(object):
-    def __init__ (self, torrent: TorrentParser):
+    def __init__ (self, torrent: TorrentParser, id: str):
+        self.id = id
         self.torrent = torrent
         self.peers = self.get_peers()
 

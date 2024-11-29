@@ -2,6 +2,7 @@ from enum import Enum
 from typing import List
 from block import Block, BlockState, BLOCK_SIZE
 import math
+import hashlib
 
 class PieceState(Enum):
     UNFINISHED = 0
@@ -45,3 +46,16 @@ class Piece(object):
             if block.state == BlockState.UNFINISHED:
                 return block
         return None
+    
+    def check_piece_hash(self, piece_data: bytes):
+        sha1 = hashlib.sha1()
+        sha1.update(piece_data)
+        calculated_hash = sha1.hexdigest()
+        return calculated_hash == self.piece_hash
+    
+    def reset_piece(self):
+        self.state = PieceState.UNFINISHED
+        self.completed_blocks = 0
+        for block in self.blocks:
+            block.state = BlockState.UNFINISHED
+        

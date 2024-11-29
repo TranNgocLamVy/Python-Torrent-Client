@@ -3,7 +3,8 @@ import binascii
 import hashlib
 
 class TorrentParser(object):
-    def __init__(self, file_name: str):
+    def __init__(self, file_name: str, id: str):
+        self.id = id
         with open(file_name, 'rb') as f:
             read_data = f.read()
             self.torrent_info_dict = bencodepy.decode(read_data)
